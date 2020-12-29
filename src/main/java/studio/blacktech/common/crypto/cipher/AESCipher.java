@@ -1,0 +1,395 @@
+package studio.blacktech.common.crypto.cipher;
+
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.KeyAgreement;
+import javax.crypto.KeyGenerator;
+import javax.crypto.NoSuchPaddingException;
+import javax.crypto.SecretKey;
+import javax.crypto.interfaces.DHPublicKey;
+import javax.crypto.spec.DHParameterSpec;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.Security;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
+import java.util.Base64.Decoder;
+import java.util.Base64.Encoder;
+
+/**
+ * AES加解密与DiffieHellman密钥协商工具
+ *
+ * ! 分为EBC和CBC模式 使用时需注意实例类型
+ *
+ * as saying: AES-256 is pure marketing
+ *
+ * @author Alceatraz Warprays alceatraz@blacktech.studio
+ */
+@SuppressWarnings({"unused", "RedundantSuppression"})
+public class AESCipher {
+
+
+    // =================================================================================================================
+
+
+    private Cipher encryptCipher;
+    private Cipher decryptCipher;
+
+    private static final Encoder encoder = Base64.getEncoder();
+    private static final Decoder decoder = Base64.getDecoder();
+
+
+    // =================================================================================================================
+
+
+    private AESCipher() throws NullPointerException {
+
+        // @formatter:off
+
+        throw new NullPointerException(
+                "为了安全性，密码和IV不会保存在实例中 初始化后 无法获取\n" +
+                "所以不提供无参数构造方法 必须传入密码/向量\n" +
+                "使用 generateSecretKey 生成密钥\n" +
+                "使用 generateSecretKey(String) 将密码转换为密钥\n" +
+                "使用 getInitializationVector(String) 将向量转换为IV"
+        );
+
+        // @formatter:on
+
+    }
+
+
+    // =================================================================================================================
+    // EBC
+
+
+    /**
+     * 使用密码初始化 * EBC模式
+     *
+     * @param key 密码
+     */
+    public AESCipher(String key) {
+        this(generateSecretKey(key));
+    }
+
+
+    /**
+     * 使用密钥初始化 * EBC模式
+     *
+     * @param secretKey 密钥
+     */
+    public AESCipher(SecretKey secretKey) {
+        try {
+            this.encryptCipher = Cipher.getInstance("AES");
+            this.decryptCipher = Cipher.getInstance("AES");
+            this.encryptCipher.init(Cipher.ENCRYPT_MODE, secretKey);
+            this.decryptCipher.init(Cipher.DECRYPT_MODE, secretKey);
+        } catch (NoSuchAlgorithmException | InvalidKeyException | NoSuchPaddingException exception) {
+            exception.printStackTrace();
+        }
+    }
+
+
+    // =================================================================================================================
+    // CBC
+
+
+    /**
+     * 使用密码和向量初始化 * CBC模式
+     *
+     * @param key    密码
+     * @param vector 向量
+     */
+    public AESCipher(String key, String vector) {
+        this(generateSecretKey(key), getInitializationVector(vector));
+    }
+
+
+    /**
+     * 使用密钥和IV初始化 * CBC模式
+     *
+     * @param secretKey       密钥
+     * @param ivParameterSpec IV
+     */
+    public AESCipher(SecretKey secretKey, IvParameterSpec ivParameterSpec) {
+        try {
+            this.encryptCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            this.decryptCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            this.encryptCipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
+            this.decryptCipher.init(Cipher.DECRYPT_MODE, secretKey, ivParameterSpec);
+        } catch (NoSuchAlgorithmException | InvalidKeyException | InvalidAlgorithmParameterException | NoSuchPaddingException exception) {
+            exception.printStackTrace();
+        }
+    }
+
+
+    // =================================================================================================================
+
+
+    /**
+     * 生成一个新的密钥
+     *
+     * @return 密钥
+     */
+    public static SecretKey generateSecretKey() {
+        SecureRandom random;
+        try {
+            boolean isLinux = System.getProperty("os.name").toLowerCase().contains("linux");
+            random = SecureRandom.getInstance(isLinux ? "NativePRNG" : "SHA1PRNG");
+        } catch (NoSuchAlgorithmException exception) {
+            random = new SecureRandom();
+        }
+        try {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+            keyGenerator.init(128, random);
+            return keyGenerator.generateKey();
+        } catch (NoSuchAlgorithmException exception) {
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+
+    /**
+     * 根据密码生成密钥实例 本质是对使用的SecureRandom设置seed 使其生成固定的结果
+     *
+     * @param key 密码
+     *
+     * @return 密钥
+     */
+    public static SecretKey generateSecretKey(String key) {
+        if (key.length() < 16) System.err.println("WARNING: Using key length less then 16, Can cause strength degeneration");
+        SecureRandom random;
+        try {
+            boolean isLinux = System.getProperty("os.name").toLowerCase().contains("linux");
+            random = SecureRandom.getInstance(isLinux ? "NativePRNG" : "SHA1PRNG");
+        } catch (NoSuchAlgorithmException exception) {
+            random = new SecureRandom();
+        }
+        random.setSeed(key.getBytes());
+        try {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
+            keyGenerator.init(128, random);
+            return keyGenerator.generateKey();
+        } catch (NoSuchAlgorithmException exception) {
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+
+    /**
+     * 由初始向量生成IV实例 IV有长度要求 直接截取会浪费随机性 导致IV强度退化 故使用MD5生成
+     *
+     * @param initialVector 初始向量
+     *
+     * @return IV
+     */
+    public static IvParameterSpec getInitializationVector(String initialVector) {
+        if (initialVector.length() < 16) System.err.println("WARNING: Using IV length less then 16, Can cause strength degeneration");
+        try {
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            digest.update(initialVector.getBytes(StandardCharsets.UTF_8));
+            return new IvParameterSpec(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+
+    // =================================================================================================================
+
+
+    /**
+     * 加密
+     *
+     * @param content 原文
+     *
+     * @return 密文
+     */
+    public String encrypt(String content) {
+        try {
+            byte[] temp1 = content.getBytes(StandardCharsets.UTF_8);
+            byte[] temp2 = encryptCipher.doFinal(temp1);
+            byte[] temp3 = encoder.encode(temp2);
+            return new String(temp3, StandardCharsets.UTF_8);
+        } catch (IllegalBlockSizeException | BadPaddingException exception) {
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+
+    /**
+     * 解密
+     *
+     * @param content 密文
+     *
+     * @return 原文
+     */
+    public String decrypt(String content) {
+        try {
+            byte[] temp1 = content.getBytes(StandardCharsets.UTF_8);
+            byte[] temp2 = decoder.decode(temp1);
+            byte[] temp3 = decryptCipher.doFinal(temp2);
+            return new String(temp3, StandardCharsets.UTF_8);
+        } catch (IllegalBlockSizeException | BadPaddingException exception) {
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+
+    // =================================================================================================================
+
+
+    public static class DHExchanger {
+
+
+        private final int keyLength;
+        private KeyPair keyPair;
+        private KeyFactory keyFactory;
+        private KeyAgreement keyAgreement;
+
+
+        /**
+         * 使用Diffie-Hellman协议协商密钥使用此构造函数 默认使用4096位长度的DH
+         *
+         * AESCipher aliceCipher = new AESCipher();
+         * String alicePublicKey = aliceCipher.initDiffieHellman(4096);
+         * // 传输Alice的公钥给Bob
+         * AESCipher bobCipher = new AESCipher();
+         * String bobPublicKey = bobCipher.initDiffieHellman(alicePublicKey);
+         * SecretKeySpec bobKey = bobCipher.generateDiffieHellmanKey();
+         * // 传输Bob的公钥给Alice
+         * SecretKeySpec aliceKey = aliceCipher.generateDiffieHellmanKey(bobPublicKey);
+         */
+        public DHExchanger() {
+            this(8192);
+        }
+
+
+        public DHExchanger(int keyLength) {
+            if (keyLength < 512) {
+                keyLength = 512;
+                System.err.println("WARNING: DiffieHellman key length minimal is 512, I set it 512 for you.");
+            } else if (keyLength > 8192) {
+                keyLength = 8192;
+                System.err.println("WARNING: DiffieHellman key length maximal is 8192, I set it 8192 for you.");
+            } else if (keyLength % 64 != 0) {
+                keyLength = 64 * (keyLength / 64 + 1);
+                System.err.println("WARNING: DiffieHellman key length must multiple 64, I set it " + keyLength + " for you.");
+            }
+            this.keyLength = keyLength;
+            try {
+                this.keyFactory = KeyFactory.getInstance("DH");
+                this.keyAgreement = KeyAgreement.getInstance("DH");
+            } catch (NoSuchAlgorithmException exception) {
+                exception.printStackTrace();
+            }
+        }
+
+
+        /**
+         * Alice一方使用此方法初始化DH
+         *
+         * @return Alice的公钥
+         */
+        public String init() {
+            SecureRandom random;
+            try {
+                boolean isLinux = System.getProperty("os.name").toLowerCase().contains("linux");
+                random = SecureRandom.getInstance(isLinux ? "NativePRNG" : "SHA1PRNG", Security.getProvider("SUN"));
+            } catch (NoSuchAlgorithmException exception) {
+                random = new SecureRandom();
+            }
+            try {
+                KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("DH");
+                keyPairGenerator.initialize(keyLength, random);
+                this.keyPair = keyPairGenerator.generateKeyPair();
+                this.keyAgreement.init(this.keyPair.getPrivate());
+                byte[] temp1 = this.keyPair.getPublic().getEncoded();
+                byte[] temp2 = encoder.encode(temp1);
+                return new String(temp2, StandardCharsets.UTF_8);
+            } catch (NoSuchAlgorithmException | InvalidKeyException exception) {
+                exception.printStackTrace();
+            }
+            return null; // Those exception no way going happen
+        }
+
+
+        /**
+         * Bob一方使用此方法初始化DH
+         *
+         * @param publicKey Alice的公钥
+         *
+         * @return Bob的公钥
+         */
+        public String init(String publicKey) {
+            try {
+                byte[] temp1 = decoder.decode(publicKey);
+                X509EncodedKeySpec x509KeySpec = new X509EncodedKeySpec(temp1);
+                DHPublicKey dhPublicKeySpec = (DHPublicKey) this.keyFactory.generatePublic(x509KeySpec);
+                DHParameterSpec dhParameterSpec = dhPublicKeySpec.getParams();
+                KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("DH");
+                keyPairGenerator.initialize(dhParameterSpec);
+                this.keyPair = keyPairGenerator.generateKeyPair();
+                this.keyAgreement.init(this.keyPair.getPrivate());
+                this.keyAgreement.doPhase(dhPublicKeySpec, true);
+                byte[] temp2 = encoder.encode(this.keyPair.getPublic().getEncoded());
+                return new String(temp2, StandardCharsets.UTF_8);
+            } catch (InvalidKeyException exception) {
+                System.err.println("ERROR: Diffie-Hellman Alice public key is invalidate!");
+                exception.printStackTrace();
+            } catch (NoSuchAlgorithmException | InvalidKeySpecException | InvalidAlgorithmParameterException exception) {
+                exception.printStackTrace();
+            }
+            return null; // Those exception no way going happen
+        }
+
+
+        /**
+         * Bob一方使用此方法生成密钥
+         *
+         * @return 密钥
+         */
+        public SecretKey generate() {
+            byte[] secret = this.keyAgreement.generateSecret();
+            return new SecretKeySpec(secret, 0, 16, "AES");
+        }
+
+
+        public SecretKey generate(String publicKey) {
+            try {
+                byte[] temp1 = decoder.decode(publicKey);
+                X509EncodedKeySpec x509EncodedKeySpec = new X509EncodedKeySpec(temp1);
+                DHPublicKey dhPublicKey = (DHPublicKey) this.keyFactory.generatePublic(x509EncodedKeySpec);
+                this.keyAgreement.doPhase(dhPublicKey, true);
+                byte[] secret = this.keyAgreement.generateSecret();
+                return new SecretKeySpec(secret, 0, 16, "AES");
+            } catch (InvalidKeyException exception) {
+                System.err.println("ERROR: Diffie-Hellman Bob public key is invalidate!");
+                exception.printStackTrace();
+            } catch (InvalidKeySpecException exception) {
+                exception.printStackTrace();
+            }
+            return null; // Those exception no way going happen
+        }
+
+
+    }
+
+}
