@@ -5,7 +5,6 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyAgreement;
-import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.interfaces.DHPublicKey;
@@ -18,10 +17,8 @@ import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.security.Security;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
@@ -37,15 +34,15 @@ import java.util.Base64.Encoder;
  *
  * @author Alceatraz Warprays alceatraz@blacktech.studio
  */
-@SuppressWarnings({"unused", "RedundantSuppression"})
+
 public class AESCipher {
 
 
     // =================================================================================================================
 
 
-    private Cipher encryptCipher;
-    private Cipher decryptCipher;
+    private final Cipher encryptCipher;
+    private final Cipher decryptCipher;
 
     private static final Encoder encoder = Base64.getEncoder();
     private static final Decoder decoder = Base64.getDecoder();
@@ -54,16 +51,15 @@ public class AESCipher {
     // =================================================================================================================
 
 
-    private AESCipher() throws NullPointerException {
+    public AESCipher() {
 
         // @formatter:off
 
         throw new NullPointerException(
                 "为了安全性，密码和IV不会保存在实例中 初始化后 无法获取\n" +
                 "所以不提供无参数构造方法 必须传入密码/向量\n" +
-                "使用 generateSecretKey 生成密钥\n" +
-                "使用 generateSecretKey(String) 将密码转换为密钥\n" +
-                "使用 getInitializationVector(String) 将向量转换为IV"
+                "使用 getSecretKey 转换密钥\n" +
+                "使用 getIVector 将向量转换为IV"
         );
 
         // @formatter:on
@@ -81,7 +77,7 @@ public class AESCipher {
      * @param key 密码
      */
     public AESCipher(String key) {
-        this(generateSecretKey(key));
+        this(getSecretKey(key));
     }
 
 
@@ -96,8 +92,10 @@ public class AESCipher {
             this.decryptCipher = Cipher.getInstance("AES");
             this.encryptCipher.init(Cipher.ENCRYPT_MODE, secretKey);
             this.decryptCipher.init(Cipher.DECRYPT_MODE, secretKey);
-        } catch (NoSuchAlgorithmException | InvalidKeyException | NoSuchPaddingException exception) {
-            exception.printStackTrace();
+        } catch (InvalidKeyException exception) {
+            throw new IllegalArgumentException("ERROR: Secret is invalidate", exception);
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException exception) {
+            throw new UnsupportedOperationException("ERROR: This runtime not support AES", exception);
         }
     }
 
@@ -113,7 +111,7 @@ public class AESCipher {
      * @param vector 向量
      */
     public AESCipher(String key, String vector) {
-        this(generateSecretKey(key), getInitializationVector(vector));
+        this(getSecretKey(key), getInitVector(vector));
     }
 
 
@@ -125,88 +123,69 @@ public class AESCipher {
      */
     public AESCipher(SecretKey secretKey, IvParameterSpec ivParameterSpec) {
         try {
-            this.encryptCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-            this.decryptCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+            this.encryptCipher = Cipher.getInstance("AES/CBC/NoPadding");
+            this.decryptCipher = Cipher.getInstance("AES/CBC/NoPadding");
             this.encryptCipher.init(Cipher.ENCRYPT_MODE, secretKey, ivParameterSpec);
             this.decryptCipher.init(Cipher.DECRYPT_MODE, secretKey, ivParameterSpec);
-        } catch (NoSuchAlgorithmException | InvalidKeyException | InvalidAlgorithmParameterException | NoSuchPaddingException exception) {
-            exception.printStackTrace();
+        } catch (InvalidKeyException exception) {
+            throw new IllegalArgumentException("ERROR: Secret is invalidate", exception);
+        } catch (InvalidAlgorithmParameterException exception) {
+            throw new IllegalArgumentException("ERROR: Vector is invalidate", exception);
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException exception) {
+            throw new UnsupportedOperationException("ERROR: This runtime not support AES", exception);
         }
     }
-
 
     // =================================================================================================================
 
 
     /**
-     * 生成一个新的密钥
-     *
-     * @return 密钥
-     */
-    public static SecretKey generateSecretKey() {
-        SecureRandom random;
-        try {
-            boolean isLinux = System.getProperty("os.name").toLowerCase().contains("linux");
-            random = SecureRandom.getInstance(isLinux ? "NativePRNG" : "SHA1PRNG");
-        } catch (NoSuchAlgorithmException exception) {
-            random = new SecureRandom();
-        }
-        try {
-            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-            keyGenerator.init(128, random);
-            return keyGenerator.generateKey();
-        } catch (NoSuchAlgorithmException exception) {
-            exception.printStackTrace();
-            return null;
-        }
-    }
-
-
-    /**
-     * 根据密码生成密钥实例 本质是对使用的SecureRandom设置seed 使其生成固定的结果
+     * 生成密钥实例 必须是16字符长度
      *
      * @param key 密码
      *
      * @return 密钥
      */
-    public static SecretKey generateSecretKey(String key) {
-        if (key.length() < 16) System.err.println("WARNING: Using key length less then 16, Can cause strength degeneration");
-        SecureRandom random;
-        try {
-            boolean isLinux = System.getProperty("os.name").toLowerCase().contains("linux");
-            random = SecureRandom.getInstance(isLinux ? "NativePRNG" : "SHA1PRNG");
-        } catch (NoSuchAlgorithmException exception) {
-            random = new SecureRandom();
-        }
-        random.setSeed(key.getBytes());
-        try {
-            KeyGenerator keyGenerator = KeyGenerator.getInstance("AES");
-            keyGenerator.init(128, random);
-            return keyGenerator.generateKey();
-        } catch (NoSuchAlgorithmException exception) {
-            exception.printStackTrace();
-            return null;
-        }
+    public static SecretKey getSecretKey(String key) {
+        return getSecretKey(key.getBytes(StandardCharsets.UTF_8));
     }
 
 
     /**
-     * 由初始向量生成IV实例 IV有长度要求 直接截取会浪费随机性 导致IV强度退化 故使用MD5生成
+     * 生成密钥实例 必须是16字符长度
      *
-     * @param initialVector 初始向量
+     * @param key 密码
+     *
+     * @return 密钥
+     */
+    public static SecretKey getSecretKey(byte[] key) {
+        if (key.length != 16) throw new IllegalArgumentException("ERROR: AES-128 key length must be 16");
+        return new SecretKeySpec(key, "AES");
+    }
+
+
+    /**
+     * 由初始向量生成IV实例 必须是16字符长度
+     *
+     * @param vector 初始向量
      *
      * @return IV
      */
-    public static IvParameterSpec getInitializationVector(String initialVector) {
-        if (initialVector.length() < 16) System.err.println("WARNING: Using IV length less then 16, Can cause strength degeneration");
-        try {
-            MessageDigest digest = MessageDigest.getInstance("MD5");
-            digest.update(initialVector.getBytes(StandardCharsets.UTF_8));
-            return new IvParameterSpec(digest.digest());
-        } catch (NoSuchAlgorithmException exception) {
-            exception.printStackTrace();
-            return null;
-        }
+    public static IvParameterSpec getInitVector(String vector) {
+        return getInitVector(vector.getBytes(StandardCharsets.UTF_8));
+    }
+
+
+    /**
+     * 由初始向量生成IV实例 必须是16字符长度
+     *
+     * @param vector 初始向量
+     *
+     * @return IV
+     */
+    public static IvParameterSpec getInitVector(byte[] vector) {
+        if (vector.length != 16) throw new IllegalArgumentException("ERROR: AES-128 key length must be 16");
+        return new IvParameterSpec(vector);
     }
 
 
@@ -226,9 +205,10 @@ public class AESCipher {
             byte[] temp2 = encryptCipher.doFinal(temp1);
             byte[] temp3 = encoder.encode(temp2);
             return new String(temp3, StandardCharsets.UTF_8);
-        } catch (IllegalBlockSizeException | BadPaddingException exception) {
-            exception.printStackTrace();
-            return null;
+        } catch (BadPaddingException | IllegalBlockSizeException exception) {
+            throw new RuntimeException("ERROR: This AES provider going wrong", exception);
+            // BadPaddingException 仅在解密时产生
+            // IllegalBlockSizeException getBytes后不可能产生块大小错误
         }
     }
 
@@ -246,9 +226,9 @@ public class AESCipher {
             byte[] temp2 = decoder.decode(temp1);
             byte[] temp3 = decryptCipher.doFinal(temp2);
             return new String(temp3, StandardCharsets.UTF_8);
-        } catch (IllegalBlockSizeException | BadPaddingException exception) {
-            exception.printStackTrace();
-            return null;
+        } catch (BadPaddingException | IllegalBlockSizeException exception) {
+            throw new IllegalArgumentException("ERROR: Content can't decrypt", exception);
+            // IllegalBlockSizeException 仅在加密时产生
         }
     }
 
@@ -260,9 +240,9 @@ public class AESCipher {
 
 
         private final int keyLength;
+        private final KeyFactory keyFactory;
+        private final KeyAgreement keyAgreement;
         private KeyPair keyPair;
-        private KeyFactory keyFactory;
-        private KeyAgreement keyAgreement;
 
 
         /**
@@ -298,7 +278,7 @@ public class AESCipher {
                 this.keyFactory = KeyFactory.getInstance("DH");
                 this.keyAgreement = KeyAgreement.getInstance("DH");
             } catch (NoSuchAlgorithmException exception) {
-                exception.printStackTrace();
+                throw new UnsupportedOperationException("ERROR: This runtime not support DH", exception);
             }
         }
 
@@ -309,13 +289,7 @@ public class AESCipher {
          * @return Alice的公钥
          */
         public String init() {
-            SecureRandom random;
-            try {
-                boolean isLinux = System.getProperty("os.name").toLowerCase().contains("linux");
-                random = SecureRandom.getInstance(isLinux ? "NativePRNG" : "SHA1PRNG", Security.getProvider("SUN"));
-            } catch (NoSuchAlgorithmException exception) {
-                random = new SecureRandom();
-            }
+            SecureRandom random = new SecureRandom();
             try {
                 KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("DH");
                 keyPairGenerator.initialize(keyLength, random);
@@ -325,9 +299,8 @@ public class AESCipher {
                 byte[] temp2 = encoder.encode(temp1);
                 return new String(temp2, StandardCharsets.UTF_8);
             } catch (NoSuchAlgorithmException | InvalidKeyException exception) {
-                exception.printStackTrace();
+                throw new UnsupportedOperationException("ERROR: This runtime not support DH", exception);
             }
-            return null; // Those exception no way going happen
         }
 
 
@@ -351,13 +324,11 @@ public class AESCipher {
                 this.keyAgreement.doPhase(dhPublicKeySpec, true);
                 byte[] temp2 = encoder.encode(this.keyPair.getPublic().getEncoded());
                 return new String(temp2, StandardCharsets.UTF_8);
-            } catch (InvalidKeyException exception) {
-                System.err.println("ERROR: Diffie-Hellman Alice public key is invalidate!");
-                exception.printStackTrace();
-            } catch (NoSuchAlgorithmException | InvalidKeySpecException | InvalidAlgorithmParameterException exception) {
-                exception.printStackTrace();
+            } catch (InvalidKeyException | InvalidAlgorithmParameterException exception) {
+                throw new IllegalArgumentException("ERROR: Diffie-Hellman Alice public key is invalidate!", exception);
+            } catch (NoSuchAlgorithmException | InvalidKeySpecException exception) {
+                throw new UnsupportedOperationException("ERROR: This runtime not support DH", exception);
             }
-            return null; // Those exception no way going happen
         }
 
 
@@ -381,12 +352,10 @@ public class AESCipher {
                 byte[] secret = this.keyAgreement.generateSecret();
                 return new SecretKeySpec(secret, 0, 16, "AES");
             } catch (InvalidKeyException exception) {
-                System.err.println("ERROR: Diffie-Hellman Bob public key is invalidate!");
-                exception.printStackTrace();
+                throw new IllegalArgumentException("ERROR: Diffie-Hellman Alice public key is invalidate!", exception);
             } catch (InvalidKeySpecException exception) {
-                exception.printStackTrace();
+                throw new UnsupportedOperationException("ERROR: This runtime not support DH", exception);
             }
-            return null; // Those exception no way going happen
         }
 
 

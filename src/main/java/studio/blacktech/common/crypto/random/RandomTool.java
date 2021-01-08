@@ -11,7 +11,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author Alceatraz Warprays alceatraz@blacktech.studio
  */
 
-public class Randomity {
+public class RandomTool {
 
     private static final String LOWER_CHAR = "abcdefghijklmnopqrstuvwxyz";
     private static final String UPPER_CHAR = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";

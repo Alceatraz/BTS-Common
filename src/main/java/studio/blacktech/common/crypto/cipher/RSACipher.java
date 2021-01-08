@@ -12,7 +12,6 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.SignatureException;
 import java.security.interfaces.RSAPrivateKey;
@@ -31,7 +30,6 @@ import java.util.Objects;
  *
  * @author Alceatraz Warprays alceatraz@blacktech.studio
  */
-@SuppressWarnings({"unused", "RedundantSuppression"})
 public class RSACipher {
 
 
@@ -129,9 +127,9 @@ public class RSACipher {
             byte[] publicKeyString = decoder.decode(publicKey);
             return (RSAPublicKey) factory.generatePublic(new X509EncodedKeySpec(publicKeyString));
         } catch (InvalidKeySpecException exception) {
-            throw new IllegalArgumentException("Invalidate RSA public key");
+            throw new IllegalArgumentException("ERROR: Invalidate RSA public key");
         } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalArgumentException("This not possible");
+            throw new UnsupportedOperationException("ERROR: This runtime not support RSA", exception);
         }
     }
 
@@ -149,9 +147,9 @@ public class RSACipher {
             byte[] privateKeyString = decoder.decode(privateKey);
             return (RSAPrivateKey) factory.generatePrivate(new PKCS8EncodedKeySpec(privateKeyString));
         } catch (InvalidKeySpecException exception) {
-            throw new IllegalArgumentException("Invalidate RSA private key");
+            throw new IllegalArgumentException("ERROR: Invalidate RSA private key");
         } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalArgumentException("This not possible");
+            throw new UnsupportedOperationException("ERROR: This runtime not support RSA", exception);
         }
     }
 
@@ -167,7 +165,7 @@ public class RSACipher {
      * @return 签名
      */
     public String signature(String content) {
-        if (this.privateKey == null) throw new IllegalArgumentException("This RSACipher instance is verify mode only");
+        if (this.privateKey == null) throw new IllegalArgumentException("ERROR: This RSACipher instance is verify mode only");
         try {
             byte[] temp1 = content.getBytes(StandardCharsets.UTF_8);
             this.createSignature.update(temp1);
@@ -175,7 +173,7 @@ public class RSACipher {
             byte[] temp3 = encoder.encode(temp2);
             return new String(temp3, StandardCharsets.UTF_8);
         } catch (SignatureException exception) {
-            throw new IllegalArgumentException("Signature failed", exception);
+            throw new IllegalArgumentException("ERROR: Signature failed", exception);
         }
     }
 
@@ -189,7 +187,7 @@ public class RSACipher {
      * @return 真假
      */
     public boolean verify(String content, String signature) {
-        if (this.publicKey == null) throw new IllegalArgumentException("This RSACipher instance is signature mode only");
+        if (this.publicKey == null) throw new IllegalArgumentException("ERROR: This RSACipher instance is signature mode only");
         try {
             byte[] temp1 = content.getBytes(StandardCharsets.UTF_8);
             byte[] temp2 = signature.getBytes(StandardCharsets.UTF_8);
@@ -197,7 +195,7 @@ public class RSACipher {
             this.verifySignature.update(temp1);
             return this.verifySignature.verify(temp3);
         } catch (SignatureException exception) {
-            throw new IllegalArgumentException("Verify failed", exception);
+            return false;
         }
     }
 
@@ -213,11 +211,15 @@ public class RSACipher {
      * @return 密文
      */
     public String encrypt(String content) {
-        if (this.publicKey == null) throw new IllegalArgumentException("Instance is decrypt mode only");
-        byte[] temp1 = content.getBytes(StandardCharsets.UTF_8);
-        byte[] temp2 = doRSAEncrypt(temp1);
-        byte[] temp3 = encoder.encode(temp2);
-        return new String(temp3, StandardCharsets.UTF_8);
+        if (this.publicKey == null) throw new IllegalArgumentException("ERROR: Instance is decrypt mode only");
+        try {
+            byte[] temp1 = content.getBytes(StandardCharsets.UTF_8);
+            byte[] temp2 = doRSAEncrypt(temp1);
+            byte[] temp3 = encoder.encode(temp2);
+            return new String(temp3, StandardCharsets.UTF_8);
+        } catch (Exception exception) {
+            throw new RuntimeException("ERROR: Encrypt failed", exception);
+        }
     }
 
 
@@ -229,11 +231,15 @@ public class RSACipher {
      * @return 原文
      */
     public String decrypt(String content) {
-        if (this.privateKey == null) throw new IllegalArgumentException("Instance is encrypt mode only");
-        byte[] temp1 = content.getBytes(StandardCharsets.UTF_8);
-        byte[] temp2 = decoder.decode(temp1);
-        byte[] temp3 = doRSADecrypt(temp2);
-        return new String(temp3, StandardCharsets.UTF_8);
+        if (this.privateKey == null) throw new IllegalArgumentException("ERROR: Instance is encrypt mode only");
+        try {
+            byte[] temp1 = content.getBytes(StandardCharsets.UTF_8);
+            byte[] temp2 = decoder.decode(temp1);
+            byte[] temp3 = doRSADecrypt(temp2);
+            return new String(temp3, StandardCharsets.UTF_8);
+        } catch (Exception exception) {
+            throw new RuntimeException("ERROR: Decrypt failed", exception);
+        }
     }
 
 
@@ -265,23 +271,6 @@ public class RSACipher {
 
 
     // =================================================================================================================
-
-
-    public static class InvalidPublicKeyException extends InvalidKeyException {
-        public InvalidPublicKeyException(String message) {
-            super(message);
-        }
-    }
-
-
-    public static class InvalidPrivateKeyException extends InvalidKeyException {
-        public InvalidPrivateKeyException(String message) {
-            super(message);
-        }
-    }
-
-
-    // =================================================================================================================
     //
     //
     //  作为一般用户 以下内容无需关心
@@ -300,20 +289,12 @@ public class RSACipher {
             System.err.println("WARNING: RSA ket length must multiple of 512, I set it to " + keyLength + " for you.");
         }
         if (keyLength < 4096) System.err.println("WARNING: RSA key length less then 4096 will face security risks!");
-        SecureRandom random;
-        try {
-            boolean isLinux = System.getProperty("os.name").toLowerCase().contains("linux");
-            random = SecureRandom.getInstance(isLinux ? "NativePRNG" : "SHA1PRNG");
-        } catch (NoSuchAlgorithmException exception) {
-            random = new SecureRandom();
-        }
         try {
             KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(keyLength, random);
+            generator.initialize(keyLength);
             return generator.generateKeyPair();
         } catch (NoSuchAlgorithmException exception) {
-            exception.printStackTrace();
-            return null;
+            throw new RuntimeException("ERROR: This JVM not support RSA", exception);
         }
     }
 
@@ -327,7 +308,7 @@ public class RSACipher {
             this.verifySignature = Signature.getInstance("SHA256withRSA");
             this.verifySignature.initVerify(publicKey);
         } catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException exception) {
-            exception.printStackTrace();
+            throw new IllegalArgumentException("ERROR: This JVM not support RSA", exception);
         }
     }
 
@@ -341,39 +322,29 @@ public class RSACipher {
             this.createSignature = Signature.getInstance("SHA256withRSA");
             this.createSignature.initSign(privateKey);
         } catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException exception) {
-            exception.printStackTrace();
+            throw new IllegalArgumentException("ERROR: This JVM not support RSA", exception);
         }
     }
 
 
-    private byte[] doRSAEncrypt(byte[] content) {
-        try {
-            int length = content.length;
-            if (length > encryptMaxLength) {
-                int size = publicKey.getModulus().bitLength() / 8;
-                return doGroupingFinal(content, length, size, encryptMaxLength, encryptCipher);
-            } else {
-                return this.encryptCipher.doFinal(content);
-            }
-        } catch (IllegalBlockSizeException | BadPaddingException exception) {
-            exception.printStackTrace();
-            return null;
+    private byte[] doRSAEncrypt(byte[] content) throws BadPaddingException, IllegalBlockSizeException {
+        int length = content.length;
+        if (length > encryptMaxLength) {
+            int size = publicKey.getModulus().bitLength() / 8;
+            return doGroupingFinal(content, length, size, encryptMaxLength, encryptCipher);
+        } else {
+            return this.encryptCipher.doFinal(content);
         }
     }
 
 
-    private byte[] doRSADecrypt(byte[] content) {
-        try {
-            int length = content.length;
-            if (length > decryptMaxLength) {
-                int size = privateKey.getModulus().bitLength() / 8 - 11;
-                return doGroupingFinal(content, length, size, decryptMaxLength, decryptCipher);
-            } else {
-                return this.decryptCipher.doFinal(content);
-            }
-        } catch (IllegalBlockSizeException | BadPaddingException exception) {
-            exception.printStackTrace();
-            return new byte[0];
+    private byte[] doRSADecrypt(byte[] content) throws BadPaddingException, IllegalBlockSizeException {
+        int length = content.length;
+        if (length > decryptMaxLength) {
+            int size = privateKey.getModulus().bitLength() / 8 - 11;
+            return doGroupingFinal(content, length, size, decryptMaxLength, decryptCipher);
+        } else {
+            return this.decryptCipher.doFinal(content);
         }
     }
 
