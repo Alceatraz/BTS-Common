@@ -286,7 +286,7 @@ public class RSACipher {
         } else if (keyLength % 512 != 0) {
             int temp = keyLength / 512;
             keyLength = 512 * (temp + 1);
-            System.err.println("WARNING: RSA ket length must multiple of 512, I set it to " + keyLength + " for you.");
+            System.err.println("WARNING: RSA key length must multiple of 512, I set it to " + keyLength + " for you.");
         }
         if (keyLength < 4096) System.err.println("WARNING: RSA key length less then 4096 will face security risks!");
         try {

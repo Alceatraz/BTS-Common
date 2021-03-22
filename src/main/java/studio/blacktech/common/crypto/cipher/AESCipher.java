@@ -11,6 +11,7 @@ import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import javax.naming.OperationNotSupportedException;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
@@ -51,11 +52,11 @@ public class AESCipher {
     // =================================================================================================================
 
 
-    public AESCipher() {
+    public AESCipher() throws OperationNotSupportedException {
 
         // @formatter:off
 
-        throw new NullPointerException(
+        throw new OperationNotSupportedException(
                 "为了安全性，密码和IV不会保存在实例中 初始化后 无法获取\n" +
                 "所以不提供无参数构造方法 必须传入密码/向量\n" +
                 "使用 getSecretKey 转换密钥\n" +
@@ -343,6 +344,13 @@ public class AESCipher {
         }
 
 
+        /**
+         * Alice一方使用此方法生成密钥
+         *
+         * @param publicKey BOT公钥
+         *
+         * @return 密钥
+         */
         public SecretKey generate(String publicKey) {
             try {
                 byte[] temp1 = decoder.decode(publicKey);

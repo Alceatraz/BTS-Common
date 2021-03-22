@@ -13,8 +13,8 @@ public class RandomTest {
         System.out.println(RandomTool.nextInt(100));
         System.out.println(RandomTool.nextInt(100, 200));
 
-        System.out.println(RandomTool.randomBASE58(32));
-        System.out.println(RandomTool.randomBASE64(32));
+        System.out.println(RandomTool.randomBASE58(16));
+        System.out.println(RandomTool.randomBASE64(16));
 
     }
 

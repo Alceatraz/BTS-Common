@@ -28,6 +28,7 @@ public class AESTest {
 
         AESCipher aliceCipher = new AESCipher(aliceKey);
         AESCipher bobCipher = new AESCipher(bobKey);
+
         String raw = "0123456789ABCDEF";
         String tmp = aliceCipher.encrypt(raw);
         String res = bobCipher.decrypt(tmp);
